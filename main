@@ -1,0 +1,113 @@
+.EQU led7seg_ddr = DDRA
+.EQU led7seg_port = PORTA
+; latch LE0/LE1 trên PORTC (PC0, PC1)
+.EQU ledsel_ddr = DDRC
+.EQU ledsel_port = PORTC
+.EQU le0 = 0
+.EQU le1 = 1
+ 
+.ORG 0
+RJMP main
+.ORG 40
+ 
+main:
+;--- Configure I/O ---
+LDI R16, 0xFF
+OUT led7seg_ddr, R16       ; PORTA all output (segments)
+LDI R16, (1<<le0)|(1<<le1)
+OUT ledsel_ddr, R16        ; PC0 and PC1 as outputs (latches)
+LDI R16, 0x00
+OUT ledsel_port, R16       ; Initialize PORTC to 0 (LE0/LE1 low)
+ 
+;--- Configure Timer1 CTC mode, clk/1024 ---
+LDI R16, 0x00
+STS TCCR1A, R16
+LDI R16, (1<<WGM12)|(1<<CS12)|(1<<CS10)
+STS TCCR1B, R16
+; OCR1A = 38 -> ~5 ms delay
+LDI R16, HIGH(38)
+STS OCR1AH, R16
+LDI R16, LOW(38)
+STS OCR1AL, R16
+SBI TIFR1, OCF1A; Clear any pending compare flag
+ 
+loop:
+; LED0 → display 3
+LDI R16, 0
+LDI R17, 3
+RCALL display_7seg
+RCALL delay_ms
+ 
+; LED1 → display 2
+LDI R16, 1
+LDI R17, 2
+RCALL display_7seg
+RCALL delay_ms
+ 
+; LED2 → display 1
+LDI R16, 2
+LDI R17, 1
+RCALL display_7seg
+RCALL delay_ms
+ 
+; LED3 → display 0
+LDI R16, 3
+LDI R17, 0
+RCALL display_7seg
+RCALL delay_ms
+ 
+RJMP loop
+ 
+display_7seg:
+LDI R18, 0xFF
+OUT led7seg_port, R18
+RCALL sel_sig
+RCALL data_led_load
+RCALL data_sig
+RCALL sel_led_load
+RCALL sel_sig
+RET
+ 
+sel_sig:
+SBI ledsel_port, le1
+CBI ledsel_port, le1
+RET
+ 
+data_sig:
+SBI ledsel_port, le0
+CBI ledsel_port, le0
+RET
+ 
+delay_ms:
+SBIS TIFR1, OCF1A
+RJMP delay_ms
+SBI TIFR1, OCF1A
+RET
+ 
+data_led_load:             ; Load segment data (0–F)
+LDI ZH, HIGH(data_led7<<1)
+LDI ZL, LOW(data_led7<<1)
+CLR R18
+ADD ZL, R17
+ADC ZH, R18
+LPM R18, Z
+OUT led7seg_port, R18
+NOP
+RET
+ 
+sel_led_load:              ; Load LED select pattern
+LDI ZH, HIGH(select_led7<<1)
+LDI ZL, LOW(select_led7<<1)
+CLR R18
+ADD ZL, R16
+ADC ZH, R18
+LPM R18, Z
+OUT led7seg_port, R18
+NOP
+RET
+ 
+data_led7:
+.DB 0xC0, 0xF9, 0xA4, 0xB0, 0x99, 0x92, 0x82, 0xF8, 0x80, 0x90, 0x88, 0x83, 0xC6, 0xA1, 0x86, 0x8E, 0, 0
+ 
+select_led7:
+.DB 0b00001110, 0b00001101, 0b00001011, 0b00000111
